@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>DATOS DE BROKER</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+</head>
+<body>
+    <button onclick="mostrarUltimosValores()">Mostrar Últimos 10 Valores</button>
+    <button onclick="descargarExcel()">Descargar en Excel</button>
+    <div id="temperatura-container"></div>
+    <table id="valores-table">
+        <thead>
+            <tr>
+                <th>Fecha y Hora</th>
+                <th>Temperatura</th>
+            </tr>
+        </thead>
+        <tbody id="valores-body">
+        </tbody>
+    </table>
+    <div id="grafico-container">
+        <canvas id="grafico"></canvas>
+    </div>
+
+    <script>
+        const client = mqtt.connect('wss://tesis2023:prueba@tesis2023.cloud.shiftr.io', {
+            clientId: 'Tesis2023'
+        });
+
+        const valoresRegistrados = [];
+        let grafico; // Variable para almacenar la instancia del gráfico
+
+        client.on('connect', function() {
+            console.log('Conectado!');
+            client.subscribe('temperatura');
+        });
+
+        client.on('message', function(topic, message) {
+            console.log(topic + ': ' + message.toString());
+            if (topic === 'temperatura') {
+                const valor = message.toString();
+                valoresRegistrados.push({
+                    fechaHora: new Date().toLocaleString(),
+                    valor: valor
+                });
+                actualizarGrafico(); // Actualizar el gráfico al recibir un nuevo valor
+                mostrarTemperatura(); // Actualizar el valor de temperatura en tiempo real
+            }
+        });
+
+        function mostrarTemperatura() {
+            const temperaturaContainer = document.getElementById('temperatura-container');
+            if (valoresRegistrados.length > 0) {
+                const ultimoValor = valoresRegistrados[valoresRegistrados.length - 1].valor;
+                temperaturaContainer.innerHTML = 'Temperatura: ' + ultimoValor;
+            } else {
+                temperaturaContainer.innerHTML = 'No hay valores registrados';
+            }
+        }
+
+        function mostrarUltimosValores() {
+            const valoresBody = document.getElementById('valores-body');
+            valoresBody.innerHTML = '';
+
+            const ultimosValores = valoresRegistrados.slice(-10);
+
+            for (let i = 0; i < ultimosValores.length; i++) {
+                const fila = document.createElement('tr');
+                const fechaHoraColumna = document.createElement('td');
+                const valorColumna = document.createElement('td');
+
+                fechaHoraColumna.textContent = ultimosValores[i].fechaHora;
+                valorColumna.textContent = ultimosValores[i].valor;
+
+                fila.appendChild(fechaHoraColumna);
+                fila.appendChild(valorColumna);
+
+                valoresBody.appendChild(fila);
+            }
+        }
+
+        function actualizarGrafico() {
+            if (grafico) {
+                grafico.destroy(); // Destruir el gráfico existente antes de crear uno nuevo
+            }
+
+            // Obtener los valores y las fechas para el gráfico
+            const ultimosValores = valoresRegistrados.slice(-10);
+            const valores = ultimosValores.map(v => v.valor);
+            const fechas = ultimosValores.map(v => v.fechaHora);
+
+            // Crear el contexto del gráfico
+            const ctx = document.getElementById('grafico').getContext('2d');
+
+            // Crear el gráfico de línea
+            grafico = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: fechas,
+                    datasets: [{
+                        label: 'Temperatura',
+                        data: valores,
+                        borderColor: 'blue',
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+
+        function descargarExcel() {
+            const workbook = XLSX.utils.book_new();
+            const worksheet = XLSX.utils.table_to_sheet(document.getElementById('valores-table'));
+
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Valores');
+
+            const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+
+            const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'valores.xlsx';
+            a.click();
+
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
